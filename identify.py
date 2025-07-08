@@ -1,58 +1,63 @@
 # identify.py
-import cv2
-import numpy as np
+import torch
 import pickle
+import numpy as np
+import torchvision.transforms as transforms
+from PIL import Image
 from scipy.spatial.distance import euclidean
+import cv2
 
 def preprocess_image(path, target_size=300):
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    
-    # Threshold to binary (black signature on white)
     _, img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
 
-    # Get current size
-    h, w = img.shape[:2]
-    
-    # Determine padding to make it square
+    h, w = img.shape
     if h > w:
-        pad_left = (h - w) // 2
-        pad_right = h - w - pad_left
-        pad_top = pad_bottom = 0
+        pad = (h - w) // 2
+        img = cv2.copyMakeBorder(img, 0, 0, pad, h - w - pad, cv2.BORDER_CONSTANT, value=0)
     else:
-        pad_top = (w - h) // 2
-        pad_bottom = w - h - pad_top
-        pad_left = pad_right = 0
+        pad = (w - h) // 2
+        img = cv2.copyMakeBorder(img, pad, w - h - pad, 0, 0, cv2.BORDER_CONSTANT, value=0)
 
-    # Apply padding
-    img_padded = cv2.copyMakeBorder(
-        img, pad_top, pad_bottom, pad_left, pad_right,
-        borderType=cv2.BORDER_CONSTANT, value=0  # black background
-    )
+    img = cv2.resize(img, (target_size, target_size))
+    return Image.fromarray(img)
 
-    # Resize to target size
-    img_resized = cv2.resize(img_padded, (target_size, target_size))
-    
-    return img_resized
+def get_embedding_model():
+    import torchvision.models as models
+    import torch.nn as nn
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+    model.fc = nn.Identity()  # remove classification head
+    model = model.to(device).eval()
 
+    transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5]*3, [0.5]*3)
+    ])
 
-def extract_features(img):
-    moments = cv2.moments(img)
-    hu_moments = cv2.HuMoments(moments).flatten()
-    return -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
+    return model, transform, device
 
-def identify_signature(test_img_path, database_path="signature_features.pkl", threshold=2.5):
+def extract_embedding(img_pil, model, transform, device):
+    with torch.no_grad():
+        img_tensor = transform(img_pil).unsqueeze(0).to(device)
+        emb = model(img_tensor).squeeze().cpu().numpy()
+    return emb
+
+def identify_signature(test_img_path, database_path="signature_features.pkl", threshold=10):
     with open(database_path, "rb") as f:
         db = pickle.load(f)
 
+    model, transform, device = get_embedding_model()
     test_img = preprocess_image(test_img_path)
-    test_feats = extract_features(test_img)
+    test_emb = extract_embedding(test_img, model, transform, device)
 
     best_match = None
-    best_score = float('inf')
-    for person, feats_list in db.items():
-        for feats in feats_list:
-            score = euclidean(test_feats, feats)
+    best_score = float("inf")
+    for person, emb_list in db.items():
+        for emb in emb_list:
+            score = euclidean(test_emb, emb)
             if score < best_score:
                 best_score = score
                 best_match = person
@@ -62,31 +67,23 @@ def identify_signature(test_img_path, database_path="signature_features.pkl", th
     else:
         return "Unknown", best_score
 
-
-# For testing identify.py
+# Optional visualization for debugging
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-
-    test_img_path = "image.png"  # Replace with a valid path
+    test_img_path = "assets/6.png"
 
     who, score = identify_signature(test_img_path)
+    print(f"Identified as: {who}, Distance: {score:.4f}")
 
-    print(who, score)
-
-    preprocessed_img = preprocess_image(test_img_path)
-
-    # Show original and preprocessed image
+    pre_img = preprocess_image(test_img_path)
     original = cv2.imread(test_img_path, cv2.IMREAD_GRAYSCALE)
-    print(f"Original size: {original.shape}")
-    print(f"Preprocessed size: {preprocessed_img.shape}")
 
     plt.subplot(1, 2, 1)
-    plt.title("Original Image")
+    plt.title("Original")
     plt.imshow(original, cmap='gray')
 
     plt.subplot(1, 2, 2)
-    plt.title("Preprocessed (300x300)")
-    plt.imshow(preprocessed_img, cmap='gray')
-
+    plt.title("Preprocessed")
+    plt.imshow(pre_img, cmap='gray')
     plt.tight_layout()
     plt.show()

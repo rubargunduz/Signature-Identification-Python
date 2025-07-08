@@ -1,18 +1,12 @@
-# feature.py, create database
-import cv2
+# feature.py
 import os
-import numpy as np
 import pickle
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+from identify import preprocess_image, get_embedding_model, extract_embedding
 
-from identify import preprocess_image
-
-
-def extract_features(img):
-    moments = cv2.moments(img)
-    hu_moments = cv2.HuMoments(moments).flatten()
-    return -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)  # Log transform for stability
-
-def build_signature_database(folder_path):
+def build_signature_database(folder_path, model, transform, device):
     db = {}
     for person_name in os.listdir(folder_path):
         person_folder = os.path.join(folder_path, person_name)
@@ -22,21 +16,21 @@ def build_signature_database(folder_path):
         for file in os.listdir(person_folder):
             img_path = os.path.join(person_folder, file)
             try:
-                img = preprocess_image(img_path)
-                feats = extract_features(img)
-                features.append(feats)
-            except:
-                print(f"Error processing {img_path}")
+                img = preprocess_image(img_path)  # returns a 300x300 grayscale PIL image
+                emb = extract_embedding(img, model, transform, device)
+                features.append(emb)
+            except Exception as e:
+                print(f"Error processing {img_path}: {e}")
         if features:
             db[person_name] = features
     return db
 
-# Build and save database
-signature_db_path = "signature_db"
-database = build_signature_database(signature_db_path)
+if __name__ == "__main__":
+    folder = "signature_db"
+    model, transform, device = get_embedding_model()
+    db = build_signature_database(folder, model, transform, device)
 
-# Save to file for later use
-with open("signature_features.pkl", "wb") as f:
-    pickle.dump(database, f)
+    with open("signature_features.pkl", "wb") as f:
+        pickle.dump(db, f)
 
-print("Database created with people:", list(database.keys()))
+    print("Database created with people:", list(db.keys()))
