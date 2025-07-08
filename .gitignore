@@ -1,0 +1,4 @@
+signature_db/
+assets/
+signature_features.pkl
+__pycache__/

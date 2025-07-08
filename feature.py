@@ -1,4 +1,4 @@
-# feature.py
+# feature.py, create database
 import cv2
 import os
 import numpy as np

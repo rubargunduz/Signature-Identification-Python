@@ -18,13 +18,14 @@ def browse_pdf():
     )
     return file_path
 
+# Update this function to your poppler installed directory or remove this if path is added to system variables 
 def pdf_to_image(pdf_path):
     pages = convert_from_path(
         pdf_path,
         dpi=300,
         first_page=1,
         last_page=1,
-        poppler_path=r"C:\poppler-24.08.0\Library\bin"
+        poppler_path=r"C:\poppler-24.08.0\Library\bin" 
     )
     if pages:
         return pages[0]

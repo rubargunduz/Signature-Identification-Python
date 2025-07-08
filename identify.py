@@ -62,6 +62,8 @@ def identify_signature(test_img_path, database_path="signature_features.pkl", th
     else:
         return "Unknown", best_score
 
+
+# For testing identify.py
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
