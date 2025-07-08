@@ -1,3 +1,3 @@
-Signature identification from chosen PDF document.
+Signature identification from selected PDF document.
 
 Yolo model detects signatures, ResNet for embeddings.
